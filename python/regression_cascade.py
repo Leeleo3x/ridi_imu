@@ -359,7 +359,6 @@ def load_datalist(path, option, class_map=None):
             else:
                 warnings.warn('Class %s not found in the class map. Skipped' % info[1])
                 continue
-
         data_all = pandas.read_csv(data_path)
         extra_args = {'target_smooth_sigma': 30.0,
                       'feature_smooth_sigma': 2.0}

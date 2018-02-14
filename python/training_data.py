@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import quaternion
 from scipy.fftpack import fft
 from scipy.ndimage.filters import gaussian_filter1d
@@ -7,7 +8,7 @@ import geometry
 
 
 class TrainingDataOption:
-    def __init__(self, sample_step=10, window_size=200, feature='direct_gravity', target='local_speed_gravity'):
+    def __init__(self, sample_step=10, window_size=200, feature='direct_gravity', target='angular_velocity'):
         # Feature vectors and targets will be computed once $self.sample_step_ frames.
         self.sample_step_ = sample_step
         # The window size used for constructing the feature vector.
@@ -135,6 +136,27 @@ def compute_local_speed_with_gravity(time_stamp, position, orientation, gravity,
     return local_speed
 
 
+def compute_angular_velocity(time_stamp, position, orientation, sample_points=None):
+    if sample_points is None:
+        sample_points = np.arange(0, time_stamp.shape[0], dtype=int)
+    speed_dir = compute_speed(time_stamp, position)
+    speed_mag = np.linalg.norm(speed_dir, axis=1)
+    angular_velocity = np.zeros((sample_points.shape[0], 3), dtype=float)
+    for i in range(1, sample_points.shape[0]):
+        q1 = quaternion.quaternion(*orientation[sample_points[i]])
+        q0 = quaternion.quaternion(*orientation[sample_points[i-1]])
+        rotation = q1 * q0.conj()
+        length = math.sqrt(rotation.x * rotation.x + rotation.y * rotation.y + rotation.z * rotation.z)
+        angle = 2 * math.atan2(length, rotation.w)
+        if length > 0:
+            axis = rotation.vec / length
+        else:
+            axis = np.array([1, 0, 0])
+        angular_velocity[i-1] = axis * angle / (time_stamp[sample_points[i]] - time_stamp[sample_points[i-1]])
+    angular_velocity[-1, :] = angular_velocity[-2, :]
+    return np.concatenate((speed_mag.reshape((angular_velocity.shape[0], -1)), angular_velocity), axis=1)
+
+
 def compute_delta_angle(time_stamp, position, orientation, sample_points=None,
                         local_axis=quaternion.quaternion(1.0, 0., 0., -1.)):
     """
@@ -200,6 +222,8 @@ def get_training_data(data_all, imu_columns, option, sample_points=None, extra_a
     elif option.target_ == 'local_speed_gravity':
         gravity = data_all[['grav_x', 'grav_y', 'grav_z']].values
         targets = compute_local_speed_with_gravity(time_stamp, pose_data, orientation, gravity)
+    elif option.target_ == "angular_velocity":
+        targets = compute_angular_velocity(time_stamp, pose_data, orientation)
 
     if extra_args is not None:
         if 'target_smooth_sigma' in extra_args:
