@@ -136,25 +136,21 @@ def compute_local_speed_with_gravity(time_stamp, position, orientation, gravity,
     return local_speed
 
 
-def compute_angular_velocity(time_stamp, position, orientation, sample_points=None):
+def compute_angular_velocity(time_stamp, position, sample_points, window_size):
     if sample_points is None:
         sample_points = np.arange(0, time_stamp.shape[0], dtype=int)
     speed_dir = compute_speed(time_stamp, position)
-    speed_mag = np.linalg.norm(speed_dir, axis=1)
-    angular_velocity = np.zeros((sample_points.shape[0], 3), dtype=float)
-    for i in range(1, sample_points.shape[0]):
-        q1 = quaternion.quaternion(*orientation[sample_points[i]])
-        q0 = quaternion.quaternion(*orientation[sample_points[i-1]])
-        rotation = q1 * q0.conj()
-        length = math.sqrt(rotation.x * rotation.x + rotation.y * rotation.y + rotation.z * rotation.z)
-        angle = 2 * math.atan2(length, rotation.w)
-        if length > 0:
-            axis = rotation.vec / length
-        else:
-            axis = np.array([1, 0, 0])
-        angular_velocity[i-1] = axis * angle / (time_stamp[sample_points[i]] - time_stamp[sample_points[i-1]])
-    angular_velocity[-1, :] = angular_velocity[-2, :]
-    return np.concatenate((speed_mag.reshape((angular_velocity.shape[0], -1)), angular_velocity), axis=1)
+    yaw_derivative = np.zeros((sample_points.shape[0], 1), dtype=float)
+    for i in range(sample_points.shape[0]):
+        v1 = speed_dir[sample_points[i]][0:2]
+        v0 = speed_dir[sample_points[i] - window_size][0:2]
+        cos_theta = v1.T.dot(v0) / (np.linalg.norm(v1) * np.linalg.norm(v0))
+        theta = math.acos(cos_theta)
+        cross = np.cross(v1, v0)
+        if cross < 0:
+            theta = -theta
+        yaw_derivative[i] = theta
+    return yaw_derivative
 
 
 def compute_delta_angle(time_stamp, position, orientation, sample_points=None,
@@ -223,13 +219,13 @@ def get_training_data(data_all, imu_columns, option, sample_points=None, extra_a
         gravity = data_all[['grav_x', 'grav_y', 'grav_z']].values
         targets = compute_local_speed_with_gravity(time_stamp, pose_data, orientation, gravity)
     elif option.target_ == "angular_velocity":
-        targets = compute_angular_velocity(time_stamp, pose_data, orientation)
+        targets = compute_angular_velocity(time_stamp, pose_data, sample_points, option.window_size_)
 
     if extra_args is not None:
         if 'target_smooth_sigma' in extra_args:
             targets = gaussian_filter1d(targets, sigma=extra_args['target_smooth_sigma'], axis=0)
 
-    targets = targets[sample_points]
+    # targets = targets[sample_points]
 
     gaussian_sigma = -1
     if extra_args is not None:
