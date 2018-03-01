@@ -3,6 +3,7 @@ import math
 import quaternion
 from scipy.fftpack import fft
 from scipy.ndimage.filters import gaussian_filter1d
+from write_trajectory_to_ply import write_ply_to_file
 
 import geometry
 
@@ -32,7 +33,7 @@ def compute_fourier_features(data, samples, window_size, threshold, discard_dire
         skip = 1
     features = np.empty([samples.shape[0], data.shape[1] * (threshold - skip)], dtype=np.float)
     for i in range(samples.shape[0]):
-        features[i, :] = np.abs(fft(data[samples[i]-window_size:samples[i]], axis=0)[skip:threshold]).flatten()
+        features[i, :] = np.abs(fft(data[samples[i] - window_size:samples[i]], axis=0)[skip:threshold]).flatten()
     return features
 
 
@@ -71,7 +72,7 @@ def compute_direct_feature_gravity(gyro, linacce, gravity, samples, window_size,
     """
     gyro_gravity = geometry.align_3dvector_with_gravity(gyro, gravity)
     linacce_gravity = geometry.align_3dvector_with_gravity(linacce, gravity)
-    return compute_direct_features(np.concatenate([gyro_gravity, linacce_gravity], axis=1), samples_points=samples,
+    return compute_direct_features(np.concatenate([gyro, linacce_gravity], axis=1), samples_points=samples,
                                    window_size=window_size, sigma=sigma)
 
 
@@ -87,8 +88,8 @@ def compute_speed(time_stamp, position, sample_points=None):
     if sample_points is None:
         sample_points = np.arange(0, time_stamp.shape[0], dtype=int)
     sample_points[-1] = min(sample_points[-1], time_stamp.shape[0] - 2)
-    speed = (position[sample_points+1] - position[sample_points]) / (time_stamp[sample_points+1] -
-                                                                     time_stamp[sample_points])[:, None]
+    speed = (position[sample_points + 1] - position[sample_points]) / (time_stamp[sample_points + 1] -
+                                                                       time_stamp[sample_points])[:, None]
     return speed
 
 
@@ -136,21 +137,58 @@ def compute_local_speed_with_gravity(time_stamp, position, orientation, gravity,
     return local_speed
 
 
-def compute_angular_velocity(time_stamp, position, sample_points, window_size):
+def compute_angular_velocity(time_stamp, position, orientation, sample_points, window_size, gravity):
     if sample_points is None:
-        sample_points = np.arange(0, time_stamp.shape[0], dtype=int)
+        sample_points = np.arange(0,    time_stamp.shape[0], dtype=int)
     speed_dir = compute_speed(time_stamp, position)
     yaw_derivative = np.zeros((sample_points.shape[0], 1), dtype=float)
+    valid_vector = np.ones((sample_points.shape[0], 1), dtype=float)
+
+
+    new_pos = [np.array([0, 0, 0])]
+    for i in range(0, len(speed_dir), window_size):
+        v1 = speed_dir[i][0:2]
+        if i != 0:
+            v0 = speed_dir[i - window_size][0:2]
+            # v0 = np.array([0, 1])
+            # v1 = np.array([math.sqrt(2), math.sqrt(2)])
+            cos_theta = v1.T.dot(v0) / np.linalg.norm(v1) / np.linalg.norm(v0)
+            theta = math.acos(cos_theta)
+            cross = np.cross(v1, v0)
+            if cross > 0:
+                theta = -theta
+            r = np.array([
+                math.cos(theta), -math.sin(theta),
+                math.sin(theta), math.cos(theta)
+            ])
+            r = r.reshape(2, 2)
+            print(theta)
+            v1 = np.matmul(r, v0 / np.linalg.norm(v0))
+
+        v = np.array([v1[0], v1[1], 0])
+
+        new_pos.append(new_pos[-1] + v)
+
+    write_ply_to_file('./result.ply', np.array(new_pos), orientation[:len(new_pos)])
+
+
     for i in range(sample_points.shape[0]):
         v1 = speed_dir[sample_points[i]][0:2]
         v0 = speed_dir[sample_points[i] - window_size][0:2]
-        cos_theta = v1.T.dot(v0) / (np.linalg.norm(v1) * np.linalg.norm(v0))
+        cos_theta = v1.T.dot(v0) / np.linalg.norm(v1) / np.linalg.norm(v0)
+        if cos_theta != cos_theta:
+            valid_vector[i] = 0
+            continue
+        if cos_theta > 1:
+            cos_theta = 1.0
+        elif cos_theta < -1:
+            cos_theta = -1.0
         theta = math.acos(cos_theta)
         cross = np.cross(v1, v0)
-        if cross < 0:
+        if cross > 0:
             theta = -theta
         yaw_derivative[i] = theta
-    return yaw_derivative
+    return yaw_derivative, valid_vector.flatten()
 
 
 def compute_delta_angle(time_stamp, position, orientation, sample_points=None,
@@ -208,6 +246,7 @@ def get_training_data(data_all, imu_columns, option, sample_points=None, extra_a
     time_stamp = data_all['time'].values / 1e09
 
     targets = None
+    valid_array = None
 
     if option.target_ == 'speed_magnitude':
         targets = np.linalg.norm(compute_speed(time_stamp, pose_data), axis=1)
@@ -219,11 +258,12 @@ def get_training_data(data_all, imu_columns, option, sample_points=None, extra_a
         gravity = data_all[['grav_x', 'grav_y', 'grav_z']].values
         targets = compute_local_speed_with_gravity(time_stamp, pose_data, orientation, gravity)
     elif option.target_ == "angular_velocity":
-        targets = compute_angular_velocity(time_stamp, pose_data, sample_points, option.window_size_)
+        gravity = data_all[['grav_x', 'grav_y', 'grav_z']].values
+        targets, valid_array = compute_angular_velocity(time_stamp, pose_data, orientation, sample_points, option.window_size_, gravity)
 
-    if extra_args is not None:
-        if 'target_smooth_sigma' in extra_args:
-            targets = gaussian_filter1d(targets, sigma=extra_args['target_smooth_sigma'], axis=0)
+    # if extra_args is not None:
+    #     if 'target_smooth_sigma' in extra_args:
+    #         targets = gaussian_filter1d(targets, sigma=extra_args['target_smooth_sigma'], axis=0)
 
     # targets = targets[sample_points]
 
@@ -245,5 +285,7 @@ def get_training_data(data_all, imu_columns, option, sample_points=None, extra_a
     else:
         print('Feature type not supported: ' + option.feature_)
         raise ValueError
-
-    return features, targets
+    if valid_array is None:
+        return features, targets
+    else:
+        return features[valid_array == 1], targets[valid_array == 1]
