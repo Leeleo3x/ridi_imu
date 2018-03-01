@@ -274,7 +274,7 @@ def load_model_from_file(path, suffix=''):
 
 
 def get_best_option(train_feature, train_label, class_map, train_response, svr_search_dict=None,
-                    n_split=3, n_jobs=6, verbose=3):
+                    n_split=3, n_jobs=8, verbose=3):
     """
     Perform grid search for best parameters with cross-validation. Please refer to:
     http://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GridSearchCV.html

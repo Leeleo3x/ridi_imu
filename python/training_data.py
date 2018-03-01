@@ -72,7 +72,7 @@ def compute_direct_feature_gravity(gyro, linacce, gravity, samples, window_size,
     """
     gyro_gravity = geometry.align_3dvector_with_gravity(gyro, gravity)
     linacce_gravity = geometry.align_3dvector_with_gravity(linacce, gravity)
-    return compute_direct_features(np.concatenate([gyro, linacce_gravity], axis=1), samples_points=samples,
+    return compute_direct_features(np.concatenate([gyro_gravity, linacce_gravity], axis=1), samples_points=samples,
                                    window_size=window_size, sigma=sigma)
 
 
