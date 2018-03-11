@@ -9,7 +9,7 @@ import geometry
 
 
 class TrainingDataOption:
-    def __init__(self, sample_step=10, window_size=200, feature='direct_gravity', target='angular_velocity'):
+    def __init__(self, sample_step=1, window_size=200, feature='direct_gravity', target='angular_velocity'):
         # Feature vectors and targets will be computed once $self.sample_step_ frames.
         self.sample_step_ = sample_step
         # The window size used for constructing the feature vector.
@@ -145,32 +145,32 @@ def compute_angular_velocity(time_stamp, position, orientation, sample_points, w
     valid_vector = np.ones((sample_points.shape[0], 1), dtype=float)
 
 
-    new_pos = [np.array([0, 0, 0])]
-    for i in range(0, len(speed_dir), window_size):
-        v1 = speed_dir[i][0:2]
-        if i != 0:
-            v0 = speed_dir[i - window_size][0:2]
-            # v0 = np.array([0, 1])
-            # v1 = np.array([math.sqrt(2), math.sqrt(2)])
-            cos_theta = v1.T.dot(v0) / np.linalg.norm(v1) / np.linalg.norm(v0)
-            theta = math.acos(cos_theta)
-            cross = np.cross(v1, v0)
-            if cross > 0:
-                theta = -theta
-            r = np.array([
-                math.cos(theta), -math.sin(theta),
-                math.sin(theta), math.cos(theta)
-            ])
-            r = r.reshape(2, 2)
-            print(theta)
-            v1 = np.matmul(r, v0 / np.linalg.norm(v0))
-
-        v = np.array([v1[0], v1[1], 0])
-
-        new_pos.append(new_pos[-1] + v)
-
-    write_ply_to_file('./result.ply', np.array(new_pos), orientation[:len(new_pos)])
-
+    # new_pos = [np.array([0, 0, 0])]
+    # for i in range(0, len(speed_dir)):
+    #     v1 = speed_dir[i][0:2]
+    #     if i != 0:
+    #         v0 = speed_dir[i - window_size][0:2]
+    #         # v0 = np.array([0, 1])
+    #         # v1 = np.array([math.sqrt(2), math.sqrt(2)])
+    #         cos_theta = v1.T.dot(v0) / np.linalg.norm(v1) / np.linalg.norm(v0)
+    #         print(cos_theta)
+    #         if cos_theta < -1:
+    #             cos_theta = -1
+    #         elif cos_theta > 1:
+    #             cos_theta = 1
+    #         theta = math.acos(cos_theta)
+    #         cross = np.cross(v1, v0)
+    #         if cross > 0:
+    #             theta = -theta
+    #         r = np.array([
+    #             math.cos(theta), -math.sin(theta),
+    #             math.sin(theta), math.cos(theta)
+    #         ])
+    #         r = r.reshape(2, 2)
+    #         v1 = np.matmul(r, v0 / np.linalg.norm(v0))
+    #     v = np.array([v1[0], v1[1], 0])
+    #     new_pos.append(new_pos[-1] + v)
+    # write_ply_to_file('./result.ply', np.array(new_pos), orientation[:len(new_pos)])
 
     for i in range(sample_points.shape[0]):
         v1 = speed_dir[sample_points[i]][0:2]
