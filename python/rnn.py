@@ -31,7 +31,7 @@ def get_batch(input_feature, input_target, batch_size, num_steps, stride_ratio=1
         yield (feat, targ)
 
 
-def construct_graph(input_dim, output_dim, batch_size=1):
+def construct_graph(input_dim, output_dim, batch_size=1, args=None):
     # construct graph
     init_stddev = 0.001
     # fully_dims = [512, 256, 128]
@@ -82,8 +82,8 @@ def run_testing(sess, variable_dict, feature, target, init_state):
     feature_rnn = feature.reshape([1, -1, input_dim])
     target_rnn = target.reshape([1, -1, output_dim])
     regressed_rnn, loss = sess.run([variable_dict['regressed'], variable_dict['total_loss']],
-                             feed_dict={variable_dict['x']: feature_rnn, variable_dict['y']: target_rnn,
-                                        variable_dict['init_state']: init_state})
+                                   feed_dict={variable_dict['x']: feature_rnn, variable_dict['y']: target_rnn,
+                                              variable_dict['init_state']: init_state})
     predicted = np.array(regressed_rnn).reshape([-1, output_dim])
     return predicted, loss
 
@@ -100,27 +100,27 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
     # first compute the variable of all channels
     targets_concat = np.concatenate(targets, axis=0)
 
-    target_mean = np.mean(targets_concat, axis=0)
-    target_variance = np.var(targets_concat, axis=0)
-    print('target mean:', target_mean)
-    print('target variance:', target_variance)
+    # target_mean = np.mean(targets_concat, axis=0)
+    # target_variance = np.var(targets_concat, axis=0)
+    # print('target mean:', target_mean)
+    # print('target variance:', target_variance)
 
-    tf.add_to_collection('target_mean_x', target_mean[0])
-    tf.add_to_collection('target_mean_z', target_mean[1])
-    tf.add_to_collection('target_variance_x', target_variance[0])
-    tf.add_to_collection('target_variance_z', target_variance[1])
+    # tf.add_to_collection('target_mean_x', target_mean[0])
+    # tf.add_to_collection('target_mean_z', target_mean[1])
+    # tf.add_to_collection('target_variance_x', target_variance[0])
+    # tf.add_to_collection('target_variance_z', target_variance[1])
 
     # normalize the input
-    for i in range(len(targets)):
-        targets[i] = np.divide(targets[i] - target_mean, target_variance)
+    # for i in range(len(targets)):
+    #     targets[i] = np.divide(targets[i] - target_mean, target_variance)
 
-    for i in range(len(valid_targets)):
-        valid_targets[i] = np.divide(valid_targets[i] - target_mean, target_variance)
+    # for i in range(len(valid_targets)):
+    #     valid_targets[i] = np.divide(valid_targets[i] - target_mean, target_variance)
     valid_targets_concat = np.concatenate(valid_targets, axis=0)
 
     tf.reset_default_graph()
     # construct graph
-    variable_dict = construct_graph(input_dim, output_dim, args.batch_size)
+    variable_dict = construct_graph(input_dim, output_dim, args.batch_size, args)
     x = variable_dict['x']
     y = variable_dict['y']
     regressed = variable_dict['regressed']
@@ -199,7 +199,8 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
                 predicted_concat.append(predicted)
             predicted_concat = np.concatenate(predicted_concat, axis=0)
             l2_loss = np.array([mean_squared_error(predicted_concat[:, 0], valid_targets_concat[:, 0]),
-                                mean_squared_error(predicted_concat[:, 1], valid_targets_concat[:, 1])])
+                                mean_squared_error(predicted_concat[:, 1], valid_targets_concat[:, 1]),
+                                mean_squared_error(predicted_concat[:, 2], valid_targets_concat[:, 2])])
             validation_losses.append(l2_loss)
             print('Validation loss at epoch {:d} (step {:d}):'.format(i, global_counter), validation_losses[-1],
                   np.average(l2_loss))
@@ -221,6 +222,7 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
         #print('Overall training loss:', train_error_axis / total_samples)
 
     return training_losses, validation_losses
+
 
 def load_dataset(listpath, imu_columns, feature_smooth_sigma, target_smooth_sigma):
     root_dir = os.path.dirname(listpath)

@@ -3,7 +3,7 @@ import plyfile
 import quaternion
 
 
-def write_ply_to_file(path, position, orientation, acceleration=None,
+def write_ply_to_file(path, position, orientation=None, acceleration=None,
                       global_rotation=np.identity(3, float), local_axis=None,
                       trajectory_color=None, num_axis=3,
                       length=1.0, kpoints=100, interval=100):
@@ -20,7 +20,7 @@ def write_ply_to_file(path, position, orientation, acceleration=None,
     :return: None
     """
     num_cams = position.shape[0]
-    assert orientation.shape[0] == num_cams
+    # assert orientation.shape[0] == num_cams
 
     max_acceleration = 1.0
     if acceleration is not None:
@@ -40,24 +40,24 @@ def write_ply_to_file(path, position, orientation, acceleration=None,
                                [0.0, 0.0, 1.0, 0.0]])
     if trajectory_color is None:
         trajectory_color = [0, 255, 255]
-    axis_color = [[0, 255, 0], [255, 0, 0], [0, 0, 255], [255, 0, 255]]
+    # axis_color = [[0, 255, 0], [255, 0, 0], [0, 0, 255], [255, 0, 255]]
     vertex_type = [('x', 'f4'), ('y', 'f4'), ('z', 'f4'), ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')]
     positions_data = np.empty((position_transformed.shape[0],), dtype=vertex_type)
     positions_data[:] = [tuple([*i, *trajectory_color]) for i in position_transformed]
 
-    app_vertex = np.empty([num_axis * kpoints], dtype=vertex_type)
-    for i in range(num_sample):
-        q = quaternion.quaternion(*orientation[sample_pt[i]])
-        if acceleration is not None:
-            local_axis[:, -1] = acceleration[sample_pt[i]].flatten() / max_acceleration
-        global_axes = np.matmul(global_rotation, np.matmul(quaternion.as_rotation_matrix(q), local_axis))
-        for k in range(num_axis):
-            for j in range(kpoints):
-                axes_pts = position_transformed[sample_pt[i]].flatten() +\
-                           global_axes[:, k].flatten() * j * length / kpoints
-                app_vertex[k*kpoints + j] = tuple([*axes_pts, *axis_color[k]])
-
-        positions_data = np.concatenate([positions_data, app_vertex], axis=0)
+    # app_vertex = np.empty([num_axis * kpoints], dtype=vertex_type)
+    # for i in range(num_sample):
+    #     q = quaternion.quaternion(*orientation[sample_pt[i]])
+    #     if acceleration is not None:
+    #         local_axis[:, -1] = acceleration[sample_pt[i]].flatten() / max_acceleration
+    #     global_axes = np.matmul(global_rotation, np.matmul(quaternion.as_rotation_matrix(q), local_axis))
+    #     for k in range(num_axis):
+    #         for j in range(kpoints):
+    #             axes_pts = position_transformed[sample_pt[i]].flatten() +\
+    #                        global_axes[:, k].flatten() * j * length / kpoints
+    #             app_vertex[k*kpoints + j] = tuple([*axes_pts, *axis_color[k]])
+    #
+    #     positions_data = np.concatenate([positions_data, app_vertex], axis=0)
     vertex_element = plyfile.PlyElement.describe(positions_data, 'vertex')
     plyfile.PlyData([vertex_element], text=True).write(path)
 
