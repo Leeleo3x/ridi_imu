@@ -240,15 +240,17 @@ def load_dataset(listpath, imu_columns, feature_smooth_sigma, target_smooth_sigm
         print('Loading ' + data_name + ', samples:', ts.shape[0])
 
         feature_vectors = data_all[imu_columns].values
-        if feature_smooth_sigma > 0:
-            feature_vectors = gaussian_filter1d(feature_vectors, sigma=feature_smooth_sigma, axis=0)
+        position -= position[0]
+        feature_vectors = np.concatenate((feature_vectors[:-1], position[:-1]), axis=1)
+        # if feature_smooth_sigma > 0:
+        #     feature_vectors = gaussian_filter1d(feature_vectors, sigma=feature_smooth_sigma, axis=0)
         # get training data
         # target_speed = td.compute_angular_velocity(ts, position, orientation, gravity)
-        target_speed = td.compute_local_speed_with_gravity(ts, position, orientation, gravity)
-        if target_smooth_sigma > 0:
-            target_speed = gaussian_filter1d(target_speed, sigma=target_smooth_sigma, axis=0)
+        # target_speed = td.compute_local_speed_with_gravity(ts, position, orientation, gravity)
+        # if target_smooth_sigma > 0:
+        #     target_speed = gaussian_filter1d(target_speed, sigma=target_smooth_sigma, axis=0)
         features_all.append(feature_vectors)
-        targets_all.append(target_speed)
+        targets_all.append(position[1:])
     return features_all, targets_all
 
 
