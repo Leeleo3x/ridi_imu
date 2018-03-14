@@ -88,8 +88,17 @@ def run_testing(sess, variable_dict, feature, target, init_state):
     return predicted, loss
 
 
+def log(path, *args):
+    if path is None:
+        print(args)
+    else:
+        with open(path, 'a') as f:
+            f.write(" ".join(args))
+            f.write('\n')
+
+
 def run_training(features, targets, valid_features, valid_targets, num_epoch, verbose=True, output_path=None,
-                 tensorboard_path=None, checkpoint_path=None):
+                 tensorboard_path=None, checkpoint_path=None, log_path=None):
     assert len(features) == len(targets)
     assert len(valid_features) == len(valid_targets)
     assert features[0].ndim == 2
@@ -162,7 +171,7 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
             saver = tf.train.Saver()
         for i in range(num_epoch):
             if verbose:
-                print('EPOCH', i)
+                log(log_path, 'EPOCH %d' % i)
             epoch_loss = 0.0
             steps_in_epoch = 0
             for data_id in range(len(features)):
@@ -178,14 +187,14 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
                     epoch_loss += current_loss
                     if (checkpoint_path is not None) and global_counter % args.checkpoint == 0 and global_counter > 0:
                         saver.save(sess, checkpoint_path + '/ckpt', global_step=global_counter)
-                        print('Checkpoint file saved at step', global_counter)
+                        log('Checkpoint file saved at step', global_counter)
                     # if global_counter % report_interval == 0 and global_counter > 0 and verbose:
                     #     if tensorboard_path is not None:
                     #         train_writer.add_summary(summaries, global_counter)
                     steps_in_epoch += 1
                     global_counter += 1
             training_losses.append(epoch_loss / steps_in_epoch)
-            print('Training loss at epoch {:d} (step {:d}): {:f}'.format(i, global_counter, training_losses[-1]))
+            log(log_path, 'Training loss at epoch {:d} (step {:d}): {:f}'.format(i, global_counter, training_losses[-1]))
 
             # run validation
             predicted_concat = []
@@ -202,12 +211,12 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
                                 mean_squared_error(predicted_concat[:, 1], valid_targets_concat[:, 1]),
                                 mean_squared_error(predicted_concat[:, 2], valid_targets_concat[:, 2])])
             validation_losses.append(l2_loss)
-            print('Validation loss at epoch {:d} (step {:d}):'.format(i, global_counter), validation_losses[-1],
-                  np.average(l2_loss))
+            log(log_path, 'Validation loss at epoch {:d} (step {:d}):'.format(i, global_counter), validation_losses[-1],
+                np.average(l2_loss))
 
         if output_path is not None:
             saver.save(sess, output_path, global_step=global_counter)
-            print('Meta graph saved to', output_path)
+            log(log_path, 'Meta graph saved to', output_path)
 
         # output final training loss
         # total_samples = 0
@@ -292,6 +301,7 @@ if __name__ == '__main__':
     model_path = None
     tfboard_path = None
     chpt_path = None
+    log_path = None
     if args.output is not None:
         output_root = args.output
         if not os.path.exists(output_root):
@@ -299,6 +309,7 @@ if __name__ == '__main__':
         model_path = output_root + '/model.tf'
         tfboard_path = output_root + '/tensorboard'
         chpt_path = output_root + '/checkpoints/'
+        log_path = os.path.join(output_root, 'log.txt')
         if not os.path.exists(tfboard_path):
             os.makedirs(tfboard_path)
         if not os.path.exists(chpt_path):
@@ -308,7 +319,7 @@ if __name__ == '__main__':
     print('Total number of validation samples: ', sum([len(target) for target in targets_validation]))
     print('Running training')
     training_losses, validation_losses = run_training(features_train, targets_train, features_validation, targets_validation, args.num_epoch,
-                                                       output_path=model_path, tensorboard_path=tfboard_path, checkpoint_path=chpt_path)
+                                                       output_path=model_path, tensorboard_path=tfboard_path, checkpoint_path=chpt_path, log_path=log_path)
 
     if output_root is not None:
         assert len(training_losses) == len(validation_losses)
