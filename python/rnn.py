@@ -74,6 +74,7 @@ def construct_graph(input_dim, output_dim, batch_size=1, args=None):
         b = tf.get_variable('b', shape=[output_dim], initializer=tf.random_normal_initializer(stddev=init_stddev))
     # regressed = tf.matmul(tf.reshape(rnn_outputs, [-1, args.state_size]), W) + b
     regressed = tf.matmul(out_fully2, W) + b
+    regressed = tf.identity(regressed, name='regressed')
     return {'x': x, 'y': y, 'init_state': init_state, 'final_state': final_state, 'regressed': regressed}
 
 
@@ -109,22 +110,22 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
     # first compute the variable of all channels
     targets_concat = np.concatenate(targets, axis=0)
 
-    # target_mean = np.mean(targets_concat, axis=0)
-    # target_variance = np.var(targets_concat, axis=0)
-    # print('target mean:', target_mean)
-    # print('target variance:', target_variance)
+    target_mean = np.mean(targets_concat, axis=0)
+    target_variance = np.var(targets_concat, axis=0)
+    print('target mean:', target_mean)
+    print('target variance:', target_variance)
 
-    # tf.add_to_collection('target_mean_x', target_mean[0])
-    # tf.add_to_collection('target_mean_z', target_mean[1])
-    # tf.add_to_collection('target_variance_x', target_variance[0])
-    # tf.add_to_collection('target_variance_z', target_variance[1])
+    tf.add_to_collection('target_mean_x', target_mean[0])
+    tf.add_to_collection('target_mean_z', target_mean[1])
+    tf.add_to_collection('target_variance_x', target_variance[0])
+    tf.add_to_collection('target_variance_z', target_variance[1])
 
     # normalize the input
-    # for i in range(len(targets)):
-    #     targets[i] = np.divide(targets[i] - target_mean, target_variance)
+    for i in range(len(targets)):
+        targets[i] = np.divide(targets[i] - target_mean, target_variance)
 
-    # for i in range(len(valid_targets)):
-    #     valid_targets[i] = np.divide(valid_targets[i] - target_mean, target_variance)
+    for i in range(len(valid_targets)):
+        valid_targets[i] = np.divide(valid_targets[i] - target_mean, target_variance)
     valid_targets_concat = np.concatenate(valid_targets, axis=0)
 
     tf.reset_default_graph()
@@ -186,8 +187,8 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
                                                                   train_step], feed_dict={x: X, y: Y, init_state: state})
                     epoch_loss += current_loss
                     if (checkpoint_path is not None) and global_counter % args.checkpoint == 0 and global_counter > 0:
-                        saver.save(sess, checkpoint_path + '/ckpt', global_step=global_counter)
-                        log('Checkpoint file saved at step', str(global_counter))
+                        saver.save(sess, os.path.join(checkpoint_path, 'ckpt'), global_step=global_counter)
+                        log(log_path, 'Checkpoint file saved at step', str(global_counter))
                     # if global_counter % report_interval == 0 and global_counter > 0 and verbose:
                     #     if tensorboard_path is not None:
                     #         train_writer.add_summary(summaries, global_counter)
@@ -207,9 +208,8 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
                 # print('Loss for valid set {}: {:.6f}(tf), {:.6f}(sklearn)'.format(valid_id, cur_loss, loss_sklearn))
                 predicted_concat.append(predicted)
             predicted_concat = np.concatenate(predicted_concat, axis=0)
-            l2_loss = np.array([mean_squared_error(predicted_concat[:, 0], valid_targets_concat[:, 0]),
-                                mean_squared_error(predicted_concat[:, 1], valid_targets_concat[:, 1]),
-                                mean_squared_error(predicted_concat[:, 2], valid_targets_concat[:, 2])])
+            l2_loss = np.array([mean_squared_error(predicted_concat[:, i], valid_targets_concat[:, i])
+                                for i in range(predicted_concat.shape[1])])
             validation_losses.append(l2_loss)
             log(log_path, 'Validation loss at epoch {:d} (step {:d}):'.format(i, global_counter), str(validation_losses[-1]),
                 str(np.average(l2_loss)))
@@ -233,7 +233,7 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
     return training_losses, validation_losses
 
 
-def load_dataset(listpath, imu_columns, feature_smooth_sigma, target_smooth_sigma):
+def load_dataset(listpath, imu_columns, target, feature_smooth_sigma, target_smooth_sigma):
     root_dir = os.path.dirname(listpath)
     features_all = []
     targets_all = []
@@ -251,17 +251,20 @@ def load_dataset(listpath, imu_columns, feature_smooth_sigma, target_smooth_sigm
         print('Loading ' + data_name + ', samples:', ts.shape[0])
 
         feature_vectors = data_all[imu_columns].values
-        position -= position[0]
-        feature_vectors = np.concatenate((feature_vectors[:-1], position[:-1]), axis=1)
-        # if feature_smooth_sigma > 0:
-        #     feature_vectors = gaussian_filter1d(feature_vectors, sigma=feature_smooth_sigma, axis=0)
+        if target == 'position':
+            position -= position[0]
+            feature_vectors = np.concatenate((feature_vectors[:-1], position[:-1]), axis=1)
+            target_vectors = position[1:]
+        elif target == 'velocity':
+            target_vectors = td.compute_local_speed_with_gravity(ts, position, orientation, gravity)
+
+        if feature_smooth_sigma > 0:
+            feature_vectors = gaussian_filter1d(feature_vectors, sigma=feature_smooth_sigma, axis=0)
         # get training data
-        # target_speed = td.compute_angular_velocity(ts, position, orientation, gravity)
-        # target_speed = td.compute_local_speed_with_gravity(ts, position, orientation, gravity)
-        # if target_smooth_sigma > 0:
-        #     target_speed = gaussian_filter1d(target_speed, sigma=target_smooth_sigma, axis=0)
+        if target_smooth_sigma > 0:
+            target_vectors = gaussian_filter1d(target_vectors, sigma=target_smooth_sigma, axis=0)
         features_all.append(feature_vectors)
-        targets_all.append(position[1:])
+        targets_all.append(target_vectors)
     return features_all, targets_all
 
 
@@ -272,6 +275,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('list', type=str)
     parser.add_argument('validation', type=str)
+    parser.add_argument('--target', type=str, default="velocity")
     parser.add_argument('--feature_smooth_sigma', type=float, default=-1.0)
     parser.add_argument('--target_smooth_sigma', type=float, default=30.0)
     parser.add_argument('--batch_size', type=int, default=1)
@@ -291,10 +295,10 @@ if __name__ == '__main__':
                    'grav_x', 'grav_y', 'grav_z']
 
     print('---------------\nTraining set')
-    features_train, targets_train = load_dataset(args.list, imu_columns,
+    features_train, targets_train = load_dataset(args.list, imu_columns, args.target,
                                                  args.feature_smooth_sigma, args.target_smooth_sigma)
     print('---------------\nValidation set')
-    features_validation, targets_validation = load_dataset(args.validation, imu_columns,
+    features_validation, targets_validation = load_dataset(args.validation, imu_columns, args.target,
                                                            args.feature_smooth_sigma, args.target_smooth_sigma)
     # configure output path
     output_root = None

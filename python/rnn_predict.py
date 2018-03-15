@@ -34,23 +34,23 @@ def load_dataset(path, imu_columns):
 
 
 def predict(checkpoint, meta_graph, feature_vectors):
-    variable_dict = rnn.construct_graph(12, 3, 1, args)
-    regressed = variable_dict['regressed']
-    x = variable_dict['x']
-    init_state = variable_dict['init_state']
-    # saver = tf.train.import_meta_graph(meta_graph)
-    saver = tf.train.Saver()
+    # saver = tf.train.Saver()
     with tf.Session() as sess:
         state = tuple(
             [(np.zeros([1, 1500]), np.zeros([1, 1500]))
              for i in range(1)])
+        saver = tf.train.import_meta_graph(meta_graph)
         saver.restore(sess, tf.train.latest_checkpoint(checkpoint))
+        graph = tf.get_default_graph()
+        x = graph.get_tensor_by_name('input_placeholder:0')
+        # init_state = graph.get_tensor_by_name('init_state')
+        regressed = graph.get_tensor_by_name('regressed:0')
         predicted = [np.array([0, 0, 0])]
         for i in range(features.shape[0]):
             X = np.concatenate([feature_vectors[i], predicted[-1]]).reshape([1, -1, 12])
             result = sess.run(regressed, feed_dict={
                 x: X,
-                init_state: state
+                # init_state: state
             })
             predicted.append(result[0])
         return predicted
@@ -67,7 +67,7 @@ if __name__ == '__main__':
     args = parse_args()
     imu_columns = ['gyro_x', 'gyro_y', 'gyro_z', 'linacce_x', 'linacce_y', 'linacce_z', 'grav_x', 'grav_y', 'grav_z']
     features = load_dataset(args.path, imu_columns)
-    predicted = predict(args.checkpoint, ',', features)
+    predicted = predict(args.checkpoint, os.path.join(args.checkpoint, 'ckpt-15000.meta'), features)
     result_folder = os.path.join(args.path, 'results')
     if not os.path.exists(result_folder):
         os.makedirs(result_folder)
