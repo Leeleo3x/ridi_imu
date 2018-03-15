@@ -187,7 +187,7 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
                     epoch_loss += current_loss
                     if (checkpoint_path is not None) and global_counter % args.checkpoint == 0 and global_counter > 0:
                         saver.save(sess, checkpoint_path + '/ckpt', global_step=global_counter)
-                        log('Checkpoint file saved at step', global_counter)
+                        log('Checkpoint file saved at step', str(global_counter))
                     # if global_counter % report_interval == 0 and global_counter > 0 and verbose:
                     #     if tensorboard_path is not None:
                     #         train_writer.add_summary(summaries, global_counter)
@@ -211,8 +211,8 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
                                 mean_squared_error(predicted_concat[:, 1], valid_targets_concat[:, 1]),
                                 mean_squared_error(predicted_concat[:, 2], valid_targets_concat[:, 2])])
             validation_losses.append(l2_loss)
-            log(log_path, 'Validation loss at epoch {:d} (step {:d}):'.format(i, global_counter), validation_losses[-1],
-                np.average(l2_loss))
+            log(log_path, 'Validation loss at epoch {:d} (step {:d}):'.format(i, global_counter), str(validation_losses[-1]),
+                str(np.average(l2_loss)))
 
         if output_path is not None:
             saver.save(sess, output_path, global_step=global_counter)
