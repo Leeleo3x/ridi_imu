@@ -11,19 +11,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('path', type=str)
     parser.add_argument('checkpoint', type=str)
-    parser.add_argument('--model', type=str, default='speed')
-    parser.add_argument('--feature_smooth_sigma', type=float, default=-1.0)
-    parser.add_argument('--target_smooth_sigma', type=float, default=30.0)
-    parser.add_argument('--batch_size', type=int, default=1)
-    parser.add_argument('--num_steps', type=int, default=400)
-    parser.add_argument('--state_size', type=int, default=1500)
-    parser.add_argument('--num_layer', type=int, default=1)
-    parser.add_argument('--num_epoch', type=int, default=200)
-    parser.add_argument('--learning_rate', type=float, default=0.01)
-    parser.add_argument('--decay_step', type=int, default=1000)
-    parser.add_argument('--decay_rate', type=float, default=0.95)
-    parser.add_argument('--output', type=str, default=None)
-    parser.add_argument('--checkpoint', type=int, default=5000)
+    parser.add_argument('--target', type=str, default='velocity')
     return parser.parse_args()
 
 
@@ -33,8 +21,7 @@ def load_dataset(path, imu_columns):
     return feature_vectors
 
 
-def predict(checkpoint, meta_graph, feature_vectors):
-    # saver = tf.train.Saver()
+def predict(checkpoint, meta_graph, target, feature_vectors):
     with tf.Session() as sess:
         state = tuple(
             [(np.zeros([1, 1500]), np.zeros([1, 1500]))
@@ -46,7 +33,7 @@ def predict(checkpoint, meta_graph, feature_vectors):
         # init_state = graph.get_tensor_by_name('init_state')
         regressed = graph.get_tensor_by_name('regressed:0')
         predicted = [np.array([0, 0, 0])]
-        for i in range(features.shape[0]):
+        for i in range(feature_vectors.shape[0]):
             X = np.concatenate([feature_vectors[i], predicted[-1]]).reshape([1, -1, 12])
             result = sess.run(regressed, feed_dict={
                 x: X,
@@ -60,16 +47,13 @@ def main():
     args = parse_args()
     imu_columns = ['gyro_x', 'gyro_y', 'gyro_z', 'linacce_x', 'linacce_y', 'linacce_z', 'grav_x', 'grav_y', 'grav_z']
     features = load_dataset(args.path, imu_columns)
-    predict(args.checkpoint, ',', features)
-
-
-if __name__ == '__main__':
-    args = parse_args()
-    imu_columns = ['gyro_x', 'gyro_y', 'gyro_z', 'linacce_x', 'linacce_y', 'linacce_z', 'grav_x', 'grav_y', 'grav_z']
-    features = load_dataset(args.path, imu_columns)
-    predicted = predict(args.checkpoint, os.path.join(args.checkpoint, 'ckpt-15000.meta'), features)
+    file_name = open(os.path.join(args.checkpoint, 'checkpoint')).readline().split(':')[1].replace('"', '').strip()
+    predicted = predict(args.checkpoint, file_name+'.meta', args.target, features)
     result_folder = os.path.join(args.path, 'results')
     if not os.path.exists(result_folder):
         os.makedirs(result_folder)
     write_ply_to_file(os.path.join(result_folder, 'rnn.ply'), np.array(predicted))
-    # main()
+
+
+if __name__ == '__main__':
+    main()

@@ -308,17 +308,14 @@ def get_best_option(train_feature, train_label, class_map, train_response, svr_s
             svr_option = SVMOption()
             svr_option.svm_type = cv2.ml.SVM_EPS_SVR
             svr_option.kernel_type = cv2.ml.SVM_RBF
-            # svr_option.gamma = 0.05
-            svr_option.gamma = 0.5
+            svr_option.gamma = 1. / train_feature.shape[1]
             if cls_name is not ignore_class:
-                # svr_grid_searcher = GridSearchCV(svm.SVR(), svr_search_dict, cv=n_split,
-                #                                  scoring='neg_mean_squared_error', n_jobs=n_jobs, verbose=verbose)
-                # svr_grid_searcher.fit(train_feature[train_label == cls, :], train_response[train_label == cls, chn])
-                # best_svr_param = svr_grid_searcher.best_params_
-                # svr_option.C = best_svr_param['C']
-                # svr_option.e = best_svr_param['epsilon']
-                svr_option.C = 10000.0
-                svr_option.e = 0.0001
+                svr_grid_searcher = GridSearchCV(svm.SVR(), svr_search_dict, cv=n_split,
+                                                 scoring='neg_mean_squared_error', n_jobs=n_jobs, verbose=verbose)
+                svr_grid_searcher.fit(train_feature[train_label == cls, :], train_response[train_label == cls, chn])
+                best_svr_param = svr_grid_searcher.best_params_
+                svr_option.C = best_svr_param['C']
+                svr_option.e = best_svr_param['epsilon']
             svr_options.append(svr_option)
     print('All done')
     return SVRCascadeOption(num_classes, num_channels, svm_option, svr_options)
@@ -434,8 +431,7 @@ if __name__ == '__main__':
         # Combine label and response to a single array to simplify the splitting process.
         target_temp = np.concatenate([label_all[:, None], responses_all], axis=1)
         feature_train, feature_test, target_train, target_test = train_test_split(feature_all, target_temp,
-                                                                                  train_size=args.train_ratio,
-                                                                                  shuffle=False)
+                                                                                  train_size=args.train_ratio)
         print('Randomly splitting the dataset to %d/%d samples for training/testing.' %
               (feature_train.shape[0], feature_test.shape[0]))
         label_train, responses_train = target_train[:, 0], target_train[:, 1:]
