@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from scipy.ndimage.filters import gaussian_filter1d
 from sklearn.metrics import r2_score, mean_squared_error
-import sys
+import math
 import os
 import training_data as td
 
@@ -31,7 +31,7 @@ def get_batch(input_feature, input_target, batch_size, num_steps, stride_ratio=1
         yield (feat, targ)
 
 
-def construct_graph(input_dim, output_dim, batch_size=1, args=None):
+def construct_graph(input_dim, output_dim, batch_size=1):
     # construct graph
     init_stddev = 0.001
     # fully_dims = [512, 256, 128]
@@ -98,39 +98,43 @@ def log(path, *args):
             f.write('\n')
 
 
-def run_training(features, targets, valid_features, valid_targets, num_epoch, verbose=True, output_path=None,
-                 tensorboard_path=None, checkpoint_path=None, log_path=None):
+def run_training(features, targets, valid_features, valid_targets, num_epoch, verbose=True, use_pdf=False, target_max=1.5,
+                 target_size=150, output_path=None, tensorboard_path=None, checkpoint_path=None, log_path=None):
     assert len(features) == len(targets)
     assert len(valid_features) == len(valid_targets)
     assert features[0].ndim == 2
 
     input_dim = features[0].shape[1]
-    output_dim = targets[0].shape[1]
+    if not use_pdf:
+        output_dim = targets[0].shape[1]
+    else:
+        output_dim = target_size * target_size
 
     # first compute the variable of all channels
     targets_concat = np.concatenate(targets, axis=0)
 
+    np.amax(targets_concat)
     target_mean = np.mean(targets_concat, axis=0)
     target_variance = np.var(targets_concat, axis=0)
     print('target mean:', target_mean)
     print('target variance:', target_variance)
 
-    tf.add_to_collection('target_mean_x', target_mean[0])
-    tf.add_to_collection('target_mean_z', target_mean[1])
-    tf.add_to_collection('target_variance_x', target_variance[0])
-    tf.add_to_collection('target_variance_z', target_variance[1])
-
-    # normalize the input
-    for i in range(len(targets)):
-        targets[i] = np.divide(targets[i] - target_mean, target_variance)
-
-    for i in range(len(valid_targets)):
-        valid_targets[i] = np.divide(valid_targets[i] - target_mean, target_variance)
+    # tf.add_to_collection('target_mean_x', target_mean[0])
+    # tf.add_to_collection('target_mean_z', target_mean[1])
+    # tf.add_to_collection('target_variance_x', target_variance[0])
+    # tf.add_to_collection('target_variance_z', target_variance[1])
+    #
+    # # normalize the input
+    # for i in range(len(targets)):
+    #     targets[i] = np.divide(targets[i] - target_mean, target_variance)
+    #
+    # for i in range(len(valid_targets)):
+    #     valid_targets[i] = np.divide(valid_targets[i] - target_mean, target_variance)
     valid_targets_concat = np.concatenate(valid_targets, axis=0)
 
     tf.reset_default_graph()
     # construct graph
-    variable_dict = construct_graph(input_dim, output_dim, args.batch_size, args)
+    variable_dict = construct_graph(input_dim, output_dim, args.batch_size)
     x = variable_dict['x']
     y = variable_dict['y']
     regressed = variable_dict['regressed']
@@ -257,6 +261,9 @@ def load_dataset(listpath, imu_columns, target, feature_smooth_sigma, target_smo
             target_vectors = position[1:]
         elif target == 'velocity':
             target_vectors = td.compute_local_speed_with_gravity(ts, position, orientation, gravity)
+        elif target == 'angle':
+            target_vectors, valid_array = td.compute_angular_velocity(ts, position)
+            target_vectors[valid_array==1]
 
         if feature_smooth_sigma > 0:
             feature_vectors = gaussian_filter1d(feature_vectors, sigma=feature_smooth_sigma, axis=0)
@@ -288,6 +295,7 @@ if __name__ == '__main__':
     parser.add_argument('--decay_rate', type=float, default=0.95)
     parser.add_argument('--output', type=str, default=None)
     parser.add_argument('--checkpoint', type=int, default=5000)
+    parser.add_argument('--use_pdf', action='store_true', default=False)
     args = parser.parse_args()
 
     imu_columns = ['gyro_x', 'gyro_y', 'gyro_z',
