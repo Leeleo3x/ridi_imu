@@ -44,9 +44,13 @@ def construct_graph(input_dim, output_dim, batch_size=1):
 
     cell = tf.contrib.rnn.BasicLSTMCell(args.state_size, state_is_tuple=True)
     multi_cell = tf.contrib.rnn.MultiRNNCell([cell] * args.num_layer, state_is_tuple=True)
-    init_state = multi_cell.zero_state(batch_size, dtype=tf.float32)
-
-    rnn_outputs, final_state = tf.nn.dynamic_rnn(multi_cell, x, initial_state=init_state)
+    init_state = tf.placeholder(tf.float32, [args.num_layer, 2, None, args.state_size], name='init_state')
+    l = tf.unstack(init_state)
+    state_tuple = tuple(
+        [tf.nn.rnn_cell.LSTMStateTuple(l[idx][0], l[idx][1])
+         for idx in range(args.num_layer)])
+    rnn_outputs, final_state = tf.nn.dynamic_rnn(multi_cell, x, initial_state=state_tuple)
+    final_state = tf.identity(final_state, name='final_state')
 
     # Fully connected layer
 
@@ -180,9 +184,7 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
             epoch_loss = 0.0
             steps_in_epoch = 0
             for data_id in range(len(features)):
-                state = tuple(
-                    [(np.zeros([args.batch_size, args.state_size]), np.zeros([args.batch_size, args.state_size]))
-                     for i in range(args.num_layer)])
+                state = np.zeros((args.num_layer, 2, args.batch_size, args.state_size))
                 for _, (X, Y) in enumerate(get_batch(features[data_id], targets[data_id],
                                                      args.batch_size, args.num_steps)):
                     summaries, current_loss, state, _ = sess.run([all_summary,
@@ -204,9 +206,7 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
             # run validation
             predicted_concat = []
             for valid_id in range(len(valid_features)):
-                state = tuple(
-                    [(np.zeros([1, args.state_size]), np.zeros([1, args.state_size]))
-                     for i in range(args.num_layer)])
+                state = np.zeros((args.num_layer, 2, 1, args.state_size))
                 predicted, cur_loss = run_testing(sess, variable_dict, valid_features[valid_id], valid_targets[valid_id], state)
                 # loss_sklearn = mean_squared_error(np.reshape(np.array(predicted), [-1, 2]), valid_targets[valid_id])
                 # print('Loss for valid set {}: {:.6f}(tf), {:.6f}(sklearn)'.format(valid_id, cur_loss, loss_sklearn))
