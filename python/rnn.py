@@ -31,7 +31,7 @@ def get_batch(input_feature, input_target, batch_size, num_steps, stride_ratio=1
         yield (feat, targ)
 
 
-def construct_graph(input_dim, output_dim, batch_size=1):
+def construct_graph(input_dim, output_dim, batch_size=1, use_pdf = False):
     # construct graph
     init_stddev = 0.001
     # fully_dims = [512, 256, 128]
@@ -78,6 +78,8 @@ def construct_graph(input_dim, output_dim, batch_size=1):
         b = tf.get_variable('b', shape=[output_dim], initializer=tf.random_normal_initializer(stddev=init_stddev))
     # regressed = tf.matmul(tf.reshape(rnn_outputs, [-1, args.state_size]), W) + b
     regressed = tf.matmul(out_fully2, W) + b
+    if use_pdf:
+        regressed = tf.nn.softmax(regressed)
     regressed = tf.identity(regressed, name='regressed')
     return {'x': x, 'y': y, 'init_state': init_state, 'final_state': final_state, 'regressed': regressed}
 
@@ -102,8 +104,24 @@ def log(path, *args):
             f.write('\n')
 
 
+def angle_to_bin(angles, bin_size):
+    VP_ANGLE_DISTRIBUTIONS_SIGMA = np.deg2rad(5.0)
+
+    bin_arrays = []
+    for value in angles:
+        angle = value[0] + np.pi
+        bin_width = np.pi * 2 / bin_size
+        bin_array = np.linspace(0, (2*np.pi - bin_width), num=bin_size)
+        bin_array = (bin_array - angle) % (2 * np.pi)
+        bin_array = [np.exp((np.cos(min(i, (2*np.pi - i))) / VP_ANGLE_DISTRIBUTIONS_SIGMA)) for i in bin_array]
+        sum_bin_array = sum(bin_array)
+        bin_array = [i / sum_bin_array for i in bin_array]
+        bin_arrays.append(bin_array)
+    return np.array(bin_arrays)
+
+
 def run_training(features, targets, valid_features, valid_targets, num_epoch, verbose=True, use_pdf=False, target_max=1.5,
-                 target_size=150, output_path=None, tensorboard_path=None, checkpoint_path=None, log_path=None):
+                 target_size=360, output_path=None, tensorboard_path=None, checkpoint_path=None, log_path=None):
     assert len(features) == len(targets)
     assert len(valid_features) == len(valid_targets)
     assert features[0].ndim == 2
@@ -112,12 +130,11 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
     if not use_pdf:
         output_dim = targets[0].shape[1]
     else:
-        output_dim = target_size * target_size
+        output_dim = target_size
 
     # first compute the variable of all channels
     targets_concat = np.concatenate(targets, axis=0)
 
-    np.amax(targets_concat)
     target_mean = np.mean(targets_concat, axis=0)
     target_variance = np.var(targets_concat, axis=0)
     print('target mean:', target_mean)
@@ -185,7 +202,11 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
             steps_in_epoch = 0
             for data_id in range(len(features)):
                 state = np.zeros((args.num_layer, 2, args.batch_size, args.state_size))
-                for _, (X, Y) in enumerate(get_batch(features[data_id], targets[data_id],
+                if use_pdf:
+                    current_target = angle_to_bin(targets[data_id], target_size)
+                else:
+                    current_target = targets[data_id]
+                for _, (X, Y) in enumerate(get_batch(features[data_id], current_target,
                                                      args.batch_size, args.num_steps)):
                     summaries, current_loss, state, _ = sess.run([all_summary,
                                                                   total_loss,
@@ -207,7 +228,11 @@ def run_training(features, targets, valid_features, valid_targets, num_epoch, ve
             predicted_concat = []
             for valid_id in range(len(valid_features)):
                 state = np.zeros((args.num_layer, 2, 1, args.state_size))
-                predicted, cur_loss = run_testing(sess, variable_dict, valid_features[valid_id], valid_targets[valid_id], state)
+                if use_pdf:
+                    current_target = angle_to_bin(valid_targets[valid_id], target_size)
+                else:
+                    current_target = valid_targets[valid_id]
+                predicted, cur_loss = run_testing(sess, variable_dict, valid_features[valid_id], current_target, state)
                 # loss_sklearn = mean_squared_error(np.reshape(np.array(predicted), [-1, 2]), valid_targets[valid_id])
                 # print('Loss for valid set {}: {:.6f}(tf), {:.6f}(sklearn)'.format(valid_id, cur_loss, loss_sklearn))
                 predicted_concat.append(predicted)
@@ -263,7 +288,8 @@ def load_dataset(listpath, imu_columns, target, feature_smooth_sigma, target_smo
             target_vectors = td.compute_local_speed_with_gravity(ts, position, orientation, gravity)
         elif target == 'angle':
             target_vectors, valid_array = td.compute_angular_velocity(ts, position)
-            target_vectors[valid_array==1]
+            target_vectors = target_vectors[valid_array == 1]
+            feature_vectors = feature_vectors[valid_array == 1]
 
         if feature_smooth_sigma > 0:
             feature_vectors = gaussian_filter1d(feature_vectors, sigma=feature_smooth_sigma, axis=0)
@@ -330,8 +356,10 @@ if __name__ == '__main__':
     print('Total number of training samples: ', sum([len(target) for target in targets_train]))
     print('Total number of validation samples: ', sum([len(target) for target in targets_validation]))
     print('Running training')
-    training_losses, validation_losses = run_training(features_train, targets_train, features_validation, targets_validation, args.num_epoch,
-                                                       output_path=model_path, tensorboard_path=tfboard_path, checkpoint_path=chpt_path, log_path=log_path)
+    training_losses, validation_losses = run_training(features_train, targets_train, features_validation,
+                                                      targets_validation, args.num_epoch, use_pdf=args.use_pdf,
+                                                      output_path=model_path, tensorboard_path=tfboard_path,
+                                                      checkpoint_path=chpt_path, log_path=log_path)
 
     if output_root is not None:
         assert len(training_losses) == len(validation_losses)

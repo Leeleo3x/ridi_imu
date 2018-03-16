@@ -30,14 +30,16 @@ def predict(checkpoint, meta_graph, target, feature_vectors):
         saver.restore(sess, tf.train.latest_checkpoint(checkpoint))
         graph = tf.get_default_graph()
         x = graph.get_tensor_by_name('input_placeholder:0')
-        # init_state = graph.get_tensor_by_name('init_state')
+        init_state = graph.get_tensor_by_name('init_state:0')
         regressed = graph.get_tensor_by_name('regressed:0')
+        final_state = graph.get_tensor_by_name('final_state:0')
         predicted = [np.array([0, 0, 0])]
+        state = np.zeros((1, 2, 1, 1500))
         for i in range(feature_vectors.shape[0]):
             X = np.concatenate([feature_vectors[i], predicted[-1]]).reshape([1, -1, 12])
-            result = sess.run(regressed, feed_dict={
+            result, state = sess.run([regressed, final_state], feed_dict={
                 x: X,
-                # init_state: state
+                init_state: state
             })
             predicted.append(result[0])
         return predicted
