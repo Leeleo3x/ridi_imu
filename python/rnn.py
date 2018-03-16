@@ -257,7 +257,11 @@ if __name__ == '__main__':
     if args.target == 'angle':
         model = models.AngleModel(args.list, args.validation)
     elif args.target == 'velocity':
-        model = models.VelocityModel(args.list, args.validation)
+        model = models.VelocityModel(args.list, args.validation, args.feature_smooth_sigma, args.target_smooth_sigma)
+    elif args.target == 'position':
+        model = models.PositionModel(args.list, args.validation)
+    else:
+        assert "Unreachable"
 
     print('Running training')
     training_losses, validation_losses = run_training(model, args.num_epoch, output_path=model_path,

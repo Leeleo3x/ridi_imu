@@ -100,6 +100,24 @@ class VelocityModel(BaseModel):
         return td.compute_local_speed_with_gravity(ts, position, orientation, gravity)
 
 
+class PositionModel(BaseModel):
+    def __init__(self, training_list, validation_list):
+        super().__init__()
+        self.training_features, self.training_targets = self.load_data(training_list)
+        self.test_features, self.test_targets = self.load_data(validation_list)
+
+    def _process_feature(self, data_all):
+        feature_vectors = data_all[IMU_COLUMNS]
+        position = data_all[POSITION_COLUMNS].values
+        position -= position[0]
+        return np.concatenate((feature_vectors[:-1], position[:-1]), axis=1)
+
+    def _process_target(self, data_all):
+        position = data_all[POSITION_COLUMNS].values
+        position -= position[0]
+        return position[1:]
+
+
 class AngleModel(BaseModel):
     def __init__(self, training_list, validation_list):
         super().__init__()
