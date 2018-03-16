@@ -165,9 +165,9 @@ def run_training(model, num_epoch, verbose=True, output_path=None, tensorboard_p
                     if (checkpoint_path is not None) and global_counter % args.checkpoint == 0 and global_counter > 0:
                         saver.save(sess, os.path.join(checkpoint_path, 'ckpt'), global_step=global_counter)
                         log(log_path, 'Checkpoint file saved at step', str(global_counter))
-                    # if global_counter % report_interval == 0 and global_counter > 0 and verbose:
-                    #     if tensorboard_path is not None:
-                    #         train_writer.add_summary(summaries, global_counter)
+                    if global_counter % report_interval == 0 and global_counter > 0 and verbose:
+                        if tensorboard_path is not None:
+                            train_writer.add_summary(summaries, global_counter)
                     steps_in_epoch += 1
                     global_counter += 1
             training_losses.append(epoch_loss / steps_in_epoch)
@@ -254,8 +254,10 @@ if __name__ == '__main__':
         if not os.path.exists(chpt_path):
             os.makedirs(chpt_path)
 
-    # if args.target == 'angle':
-    model = models.AngleModel(args.list, args.validation)
+    if args.target == 'angle':
+        model = models.AngleModel(args.list, args.validation)
+    elif args.target == 'velocity':
+        model = models.VelocityModel(args.list, args.validation)
 
     print('Running training')
     training_losses, validation_losses = run_training(model, args.num_epoch, output_path=model_path,

@@ -3,9 +3,7 @@ import numpy as np
 import pandas
 import training_data as td
 from scipy.stats import truncnorm
-from scipy.stats import norm
-from scipy.special import logsumexp
-import matplotlib.pyplot as plt
+from scipy.ndimage.filters import gaussian_filter1d
 
 
 NANO_TO_SEC = 1e09
@@ -15,6 +13,7 @@ IMU_COLUMNS = ['gyro_x', 'gyro_y', 'gyro_z',
                'grav_x', 'grav_y', 'grav_z']
 POSITION_COLUMNS = ['pos_x', 'pos_y', 'pos_z']
 ORIENTATION_COLUMNS = ['ori_w', 'ori_x', 'ori_y', 'ori_z']
+GRAVITY_COLUMNS = ['grav_x', 'grav_y', 'grav_z']
 TIME_COLUMN = 'time'
 
 
@@ -25,6 +24,8 @@ class BaseModel:
         self.training_targets = None
         self.test_targets = None
         self.test_features = None
+        self.feature_smooth_sigma = 0
+        self.target_smooth_sigma = 0
 
     def input_dim(self):
         return self.training_features[0].shape[1]
@@ -54,6 +55,10 @@ class BaseModel:
             if valid is not None:
                 feature = feature[valid == 1]
                 target = target[valid == 1]
+            if self.feature_smooth_sigma > 0:
+                feature = gaussian_filter1d(feature, sigma=self.feature_smooth_sigma, axis=0)
+            if self.target_smooth_sigma > 0:
+                target = gaussian_filter1d(target, sigma=self.target_smooth_sigma, axis=0)
             features_all.append(np.array(feature))
             targets_all.append(np.array(target))
         return features_all, targets_all
@@ -68,7 +73,6 @@ class BaseModel:
         # normalize the input
         for i in range(len(self.training_targets)):
             self.training_targets[i] = np.divide(self.training_targets[i] - target_mean, target_variance)
-
         for i in range(len(self.test_targets)):
             self.test_targets[i] = np.divide(self.test_targets[i] - target_mean, target_variance)
 
@@ -77,6 +81,23 @@ class BaseModel:
 
     def validation_data(self):
         return zip(self.test_features, self.training_targets)
+
+
+class VelocityModel(BaseModel):
+    def __init__(self, training_list, validation_list, feature_smooth_sigma = 0, target_smooth_sigma = 0):
+        super().__init__()
+        self.training_features, self.training_targets = self.load_data(training_list)
+        self.test_features, self.test_targets = self.load_data(validation_list)
+
+    def _process_feature(self, data_all):
+        return data_all[IMU_COLUMNS]
+
+    def _process_target(self, data_all):
+        ts = data_all[TIME_COLUMN].values / NANO_TO_SEC
+        position = data_all[POSITION_COLUMNS].values
+        orientation = data_all[ORIENTATION_COLUMNS].values
+        gravity = data_all[GRAVITY_COLUMNS]
+        return td.compute_local_speed_with_gravity(ts, position, orientation, gravity)
 
 
 class AngleModel(BaseModel):
