@@ -139,7 +139,7 @@ def compute_local_speed_with_gravity(time_stamp, position, orientation, gravity,
 
 def compute_angular_velocity(time_stamp, position, sample_points=None, window_size=1):
     if sample_points is None:
-        sample_points = np.arange(0,    time_stamp.shape[0], dtype=int)
+        sample_points = np.arange(0, time_stamp.shape[0], dtype=int)
     speed_dir = compute_speed(time_stamp, position)
     yaw_derivative = np.zeros((sample_points.shape[0], 1), dtype=float)
     valid_vector = np.ones((sample_points.shape[0], 1), dtype=float)

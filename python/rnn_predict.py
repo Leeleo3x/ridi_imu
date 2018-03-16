@@ -22,10 +22,10 @@ def load_dataset(path, imu_columns):
 
 
 def predict(checkpoint, meta_graph, target, feature_vectors):
-    with tf.Session() as sess:
-        state = tuple(
-            [(np.zeros([1, 1500]), np.zeros([1, 1500]))
-             for i in range(1)])
+    config = tf.ConfigProto(
+        device_count={'GPU': 0}
+    )
+    with tf.Session(config=config) as sess:
         saver = tf.train.import_meta_graph(meta_graph)
         saver.restore(sess, tf.train.latest_checkpoint(checkpoint))
         graph = tf.get_default_graph()
