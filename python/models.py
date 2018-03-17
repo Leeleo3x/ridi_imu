@@ -88,7 +88,7 @@ class BaseModel:
         return zip(self.training_features, self.training_targets)
 
     def validation_data(self):
-        return zip(self.test_features, self.training_targets)
+        return zip(self.test_features, self.test_targets)
 
 
 class VelocityModel(BaseModel):
