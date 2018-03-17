@@ -1,7 +1,7 @@
 import argparse
 import pandas
 import os
-import rnn
+import models
 import tensorflow as tf
 import numpy as np
 from write_trajectory_to_ply import write_ply_to_file
@@ -21,7 +21,7 @@ def load_dataset(path, imu_columns):
     return feature_vectors
 
 
-def predict(checkpoint, meta_graph, target, feature_vectors):
+def predict(checkpoint, meta_graph, model):
     config = tf.ConfigProto(
         device_count={'GPU': 0}
     )
@@ -35,21 +35,22 @@ def predict(checkpoint, meta_graph, target, feature_vectors):
         final_state = graph.get_tensor_by_name('final_state:0')
         predicted = [np.array([0, 0, 0])]
         state = np.zeros((1, 2, 1, 1500))
-        for i in range(feature_vectors.shape[0]):
-            X = np.concatenate([feature_vectors[i], predicted[-1]]).reshape([1, -1, 12])
+        trajectory = []
+        for features, targets in model.training_data():
+            # X = np.concatenate([feature_vectors[i], predicted[-1]]).reshape([1, -1, 12])
             result, state = sess.run([regressed, final_state], feed_dict={
-                x: X,
+                x: features.reshape(1, -1, 9),
                 init_state: state
             })
-            predicted.append(result[0])
-        return predicted
+            return model.trajectory_from_prediction(result)
 
 
 def main():
     args = parse_args()
-    features = load_dataset(args.path, imu_columns)
+    if args.target == 'angle':
+        model = models.AngleModel(args.path)
     file_name = open(os.path.join(args.checkpoint, 'checkpoint')).readline().split(':')[1].replace('"', '').strip()
-    predicted = predict(args.checkpoint, file_name+'.meta', args.target, features)
+    predicted = predict(args.checkpoint, file_name+'.meta', model)
     result_folder = os.path.join(args.path, 'results')
     if not os.path.exists(result_folder):
         os.makedirs(result_folder)

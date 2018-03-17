@@ -1,10 +1,11 @@
 import os
+import math
 import numpy as np
 import pandas
 import training_data as td
 from scipy.stats import truncnorm
 from scipy.ndimage.filters import gaussian_filter1d
-
+import matplotlib.pyplot as plt
 
 NANO_TO_SEC = 1e09
 VP_ANGLE_DISTRIBUTIONS_SIGMA = np.deg2rad(5.0)
@@ -59,7 +60,7 @@ class BaseModel:
 
         if os.path.isdir(path):
             load(os.path.join(path, 'processed', 'data.csv'))
-            return
+            return features_all, targets_all
         root_dir = os.path.dirname(path)
         with open(path) as f:
             datasets = f.readlines()
@@ -91,13 +92,13 @@ class BaseModel:
 
 
 class VelocityModel(BaseModel):
-    def __init__(self, training_list, validation_list, feature_smooth_sigma = 0, target_smooth_sigma = 0):
+    def __init__(self, training_list, validation_list, feature_smooth_sigma=0, target_smooth_sigma=0):
         super().__init__()
         self.training_features, self.training_targets = self.load_data(training_list)
         self.test_features, self.test_targets = self.load_data(validation_list)
 
     def _process_feature(self, data_all):
-        return data_all[IMU_COLUMNS]
+        return data_all[IMU_COLUMNS].values
 
     def _process_target(self, data_all):
         ts = data_all[TIME_COLUMN].values / NANO_TO_SEC
@@ -126,34 +127,41 @@ class PositionModel(BaseModel):
 
 
 class AngleModel(BaseModel):
-    def __init__(self, training_list, validation_list):
+    def __init__(self, training_list, validation_list=None):
         super().__init__()
         self.softmax = True
         self.pdf_size = 360
-        self.pdf_min = -0.2
-        self.pdf_max = 0.2
+        self.pdf_min = -1
+        self.pdf_max = 1
         self.standard_derivation = 0.001
+        self.batch_size = 50
         self.training_features, self.training_targets = self.load_data(training_list)
-        self.test_features, self.test_targets = self.load_data(validation_list)
+        if validation_list is not None:
+            self.test_features, self.test_targets = self.load_data(validation_list)
 
     def output_dim(self):
         return self.pdf_size
 
     def _process_feature(self, data_all):
-        return data_all[IMU_COLUMNS]
+        raw_data = data_all[IMU_COLUMNS].values
+        features = []
+        for i in range(len(raw_data) // self.batch_size):
+            features.append(raw_data[i*self.batch_size:(i+1)*self.batch_size].flatten())
+        return np.array(features)
 
     def _process_target(self, data_all):
         ts = data_all[TIME_COLUMN].values / NANO_TO_SEC
         position = data_all[POSITION_COLUMNS].values
-        return td.compute_angular_velocity(ts, position)
+        targes, valid = td.compute_angular_velocity(ts, position, np.arange(0, len(position), self.batch_size),
+                                                    self.batch_size)
+        return targes[:-1], valid[:-1]
 
     def angle_to_bin(self, angles):
         result = []
+        angles = np.clip(angles, self.pdf_min, self.pdf_max)
+        # plt.hist(angles, bins=self.pdf_size)
+        # plt.show()
         for angle in angles:
-            if angle < self.pdf_min:
-                angle = self.pdf_min
-            if angle > self.pdf_max:
-                angle = self.pdf_max
             values = np.linspace(self.pdf_min, self.pdf_max, self.pdf_size)
             values = truncnorm.pdf(values, (self.pdf_min - angle) / self.standard_derivation,
                                    (self.pdf_max - angle) / self.standard_derivation,
@@ -169,4 +177,21 @@ class AngleModel(BaseModel):
     def validation_data(self):
         return zip(self.test_features, map(self.angle_to_bin, self.test_targets))
 
+    def trajectory_from_prediction(self, prediction):
+        trajectory = [np.array([0, 0, 0])]
+        v = np.array([0, 0, 1])
+        values = np.linspace(self.pdf_min, self.pdf_max, self.pdf_size)
+        result = []
+        for bin in prediction:
+            theta = sum(bin * values)
+            result.append(theta)
+            trajectory.append(trajectory[-1] + v)
+            r = np.array([
+                math.cos(theta), 0, -math.sin(theta),
+                0, 1, 0,
+                math.sin(theta), 0, math.cos(theta)
+            ]).reshape(3, 3)
+            v = np.matmul(r, v)
+            v /= np.linalg.norm(v)
+        return trajectory
 
