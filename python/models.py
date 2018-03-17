@@ -104,8 +104,8 @@ class VelocityModel(BaseModel):
         ts = data_all[TIME_COLUMN].values / NANO_TO_SEC
         position = data_all[POSITION_COLUMNS].values
         orientation = data_all[ORIENTATION_COLUMNS].values
-        gravity = data_all[GRAVITY_COLUMNS]
-        return td.compute_local_speed_with_gravity(ts, position, orientation, gravity)
+        gravity = data_all[GRAVITY_COLUMNS].values
+        return td.compute_local_speed_with_gravity(ts, position, orientation, gravity), None
 
 
 class PositionModel(BaseModel):
