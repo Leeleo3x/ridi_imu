@@ -47,7 +47,6 @@ def predict(checkpoint, meta_graph, target, feature_vectors):
 
 def main():
     args = parse_args()
-    imu_columns = ['gyro_x', 'gyro_y', 'gyro_z', 'linacce_x', 'linacce_y', 'linacce_z', 'grav_x', 'grav_y', 'grav_z']
     features = load_dataset(args.path, imu_columns)
     file_name = open(os.path.join(args.checkpoint, 'checkpoint')).readline().split(':')[1].replace('"', '').strip()
     predicted = predict(args.checkpoint, file_name+'.meta', args.target, features)

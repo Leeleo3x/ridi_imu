@@ -40,16 +40,11 @@ class BaseModel:
         return None, None
 
     def load_data(self, path):
-        root_dir = os.path.dirname(path)
         features_all = []
         targets_all = []
-        with open(path) as f:
-            datasets = f.readlines()
-        for data in datasets:
-            if data[0] == '#':
-                continue
-            [data_name, _] = [x.strip() for x in data.split(',')]
-            data_all = pandas.read_csv(root_dir + '/' + data_name + '/processed/data.csv')
+
+        def load(file):
+            data_all = pandas.read_csv(file)
             feature = self._process_feature(data_all)
             target, valid = self._process_target(data_all)
             if valid is not None:
@@ -61,6 +56,18 @@ class BaseModel:
                 target = gaussian_filter1d(target, sigma=self.target_smooth_sigma, axis=0)
             features_all.append(np.array(feature))
             targets_all.append(np.array(target))
+
+        if os.path.isdir(path):
+            load(os.path.join(path, 'processed', 'data.csv'))
+            return
+        root_dir = os.path.dirname(path)
+        with open(path) as f:
+            datasets = f.readlines()
+        for data in datasets:
+            if data[0] == '#':
+                continue
+            [data_name, _] = [x.strip() for x in data.split(',')]
+            load(os.path.join(root_dir, data_name, 'processed', 'data.csv'))
         return features_all, targets_all
 
     def normalize_input(self):
@@ -148,11 +155,6 @@ class AngleModel(BaseModel):
             if angle > self.pdf_max:
                 angle = self.pdf_max
             values = np.linspace(self.pdf_min, self.pdf_max, self.pdf_size)
-            # plt.plot(truncnorm.pdf(values, (self.pdf_min - angle) / self.standard_derivation,
-            #                        (self.pdf_max - angle) / self.standard_derivation,
-            #                        loc=angle,
-            #                        scale=self.standard_derivation))
-            # plt.show()
             values = truncnorm.pdf(values, (self.pdf_min - angle) / self.standard_derivation,
                                    (self.pdf_max - angle) / self.standard_derivation,
                                    loc=angle,
