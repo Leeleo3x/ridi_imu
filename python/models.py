@@ -112,10 +112,6 @@ class VelocityModel(BaseModel):
         self.test_features, self.test_targets = self.load_data(validation_list)
 
     def _process_feature(self, data_all):
-        # raw_data = data_all[IMU_COLUMNS].values
-        # features = []
-        # for i in range(0, len(raw_data) - self.batch_size, self.step):
-        #     features.append(raw_data[i*self.batch_size:(i+1)*self.batch_size].flatten())
         return data_all[IMU_COLUMNS].values
 
     def _process_target(self, data_all):
@@ -123,12 +119,6 @@ class VelocityModel(BaseModel):
         position = data_all[POSITION_COLUMNS].values
         self.orientation = data_all[ORIENTATION_COLUMNS].values
         gravity = data_all[GRAVITY_COLUMNS].values
-        magnet = data_all[MAGNET_COLUMNS].values
-
-        # rot_grav = utils.quaternion_from_two_vectors(magnet[0], np.array([0, 0, 1]))
-        # magnet_grav = np.matmul(quaternion.as_rotation_matrix(rot_grav), gravity[0])
-        # magnet_grav[2] = 0
-        # self.rot = utils.quaternion_from_two_vectors(magnet_grav, np.array([0, 1, 0]))
 
         return td.compute_local_speed_with_gravity(ts, position, self.orientation, gravity), None
 

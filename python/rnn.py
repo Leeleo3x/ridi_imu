@@ -33,6 +33,11 @@ def get_batch(input_feature, input_target, batch_size, num_steps, stride_ratio=1
             feat = feature_batches[:, i:i+stride, :]
             targ = target_batches[:, i:i+stride, :]
             yield (feat, targ)
+        end = ((partition_length-stride) // step_size) * step_size + stride
+        if end < partition_length:
+            feat = feature_batches[:, end:partition_length, :]
+            targ = target_batches[:, end:partition_length, :]
+            yield (feat, targ)
 
 
 def construct_graph(input_dim, output_dim, batch_size=1, softmax=False):
@@ -163,7 +168,7 @@ def run_training(model, num_epoch, verbose=True, output_path=None, tensorboard_p
                 state = np.zeros((args.num_layer, 2, args.batch_size, args.state_size))
                 for _, (X, Y) in enumerate(get_batch(features, targets,
                                                      args.batch_size, args.num_steps, full_sequence=model.full_sequence,
-                                                     step_size=args.num_steps//20)):
+                                                     step_size=args.num_steps//8)):
                     summaries, current_loss, state, _ = sess.run([all_summary,
                                                                   total_loss,
                                                                   final_state,
