@@ -8,7 +8,7 @@ args = None
 nano_to_sec = 1e09
 
 
-def get_batch(input_feature, input_target, batch_size, num_steps, stride_ratio=1):
+def get_batch(input_feature, input_target, batch_size, num_steps, stride_ratio=1, full_sequence=True):
     total_num, dim = input_feature.shape
     assert input_target.shape[0] == total_num
 
@@ -20,13 +20,19 @@ def get_batch(input_feature, input_target, batch_size, num_steps, stride_ratio=1
         target_batches[i] = input_target[i * partition_length:(i + 1) * partition_length, :]
 
     stride = num_steps // stride_ratio
-    epoch_size = partition_length // stride
-    for i in range(epoch_size):
-        if i * stride + num_steps >= feature_batches.shape[1]:
-            break
-        feat = feature_batches[:, i * stride: i * stride + num_steps, :]
-        targ = target_batches[:, i * stride: i * stride + num_steps, :]
-        yield (feat, targ)
+    if full_sequence:
+        epoch_size = partition_length // stride
+        for i in range(epoch_size):
+            if i * stride + num_steps >= feature_batches.shape[1]:
+                break
+            feat = feature_batches[:, i * stride: i * stride + num_steps, :]
+            targ = target_batches[:, i * stride: i * stride + num_steps, :]
+            yield (feat, targ)
+    else:
+        for i in range(partition_length-stride):
+            feat = feature_batches[:, i:i+stride, :]
+            targ = target_batches[:, i:i+stride, :]
+            yield (feat, targ)
 
 
 def construct_graph(input_dim, output_dim, batch_size=1, softmax=False):
@@ -155,12 +161,14 @@ def run_training(model, num_epoch, verbose=True, output_path=None, tensorboard_p
             for features, targets in model.training_data():
                 state = np.zeros((args.num_layer, 2, args.batch_size, args.state_size))
                 for _, (X, Y) in enumerate(get_batch(features, targets,
-                                                     args.batch_size, args.num_steps)):
+                                                     args.batch_size, args.num_steps, model.full_sequence)):
                     summaries, current_loss, state, _ = sess.run([all_summary,
                                                                   total_loss,
                                                                   final_state,
                                                                   train_step],
                                                                  feed_dict={x: X, y: Y, init_state: state})
+                    if model.full_sequence:
+                        state = np.zeros((args.num_layer, 2, args.batch_size, args.state_size))
                     epoch_loss += current_loss
                     if (checkpoint_path is not None) and global_counter % args.checkpoint == 0 and global_counter > 0:
                         saver.save(sess, os.path.join(checkpoint_path, 'ckpt'), global_step=global_counter)
@@ -266,7 +274,7 @@ if __name__ == '__main__':
     print('Running training')
     training_losses, validation_losses = run_training(model, args.num_epoch, output_path=model_path,
                                                       tensorboard_path=tfboard_path, checkpoint_path=chpt_path,
-                                                      log_path=log_path)
+                                                      log_path=log_path, reset_each_batch=model.reset_each_batch)
 
     if output_root is not None:
         assert len(training_losses) == len(validation_losses)

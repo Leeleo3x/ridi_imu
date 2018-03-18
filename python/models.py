@@ -21,6 +21,8 @@ TIME_COLUMN = 'time'
 class BaseModel:
     def __init__(self):
         self.softmax = False
+        self.full_sequence = False
+        self.reset_each_batch = False
         self.training_features = None
         self.training_targets = None
         self.test_targets = None
@@ -41,6 +43,9 @@ class BaseModel:
         return None, None
 
     def load_data(self, path):
+        if path is None:
+            return None, None
+
         features_all = []
         targets_all = []
 
@@ -92,12 +97,23 @@ class BaseModel:
 
 
 class VelocityModel(BaseModel):
-    def __init__(self, training_list, validation_list, feature_smooth_sigma=0, target_smooth_sigma=0):
+    def __init__(self, training_list, validation_list=None, feature_smooth_sigma=0, target_smooth_sigma=0,
+                 batch_size=1, step = 10):
         super().__init__()
+        self.feature_smooth_sigma = feature_smooth_sigma
+        self.target_smooth_sigma = target_smooth_sigma
+        self.batch_size = batch_size
+        self.step = step
+        self.reset_each_batch = True
+        self.full_sequence = True
         self.training_features, self.training_targets = self.load_data(training_list)
         self.test_features, self.test_targets = self.load_data(validation_list)
 
     def _process_feature(self, data_all):
+        # raw_data = data_all[IMU_COLUMNS].values
+        # features = []
+        # for i in range(0, len(raw_data) - self.batch_size, self.step):
+        #     features.append(raw_data[i*self.batch_size:(i+1)*self.batch_size].flatten())
         return data_all[IMU_COLUMNS].values
 
     def _process_target(self, data_all):
@@ -106,6 +122,13 @@ class VelocityModel(BaseModel):
         orientation = data_all[ORIENTATION_COLUMNS].values
         gravity = data_all[GRAVITY_COLUMNS].values
         return td.compute_local_speed_with_gravity(ts, position, orientation, gravity), None
+
+    @staticmethod
+    def trajectory_from_prediction(prediction):
+        trajectory = [np.array([0, 0, 0])]
+        for v in prediction:
+            trajectory.append(trajectory[-1] + v)
+        return trajectory
 
 
 class PositionModel(BaseModel):
@@ -136,8 +159,7 @@ class AngleModel(BaseModel):
         self.standard_derivation = 0.001
         self.batch_size = 50
         self.training_features, self.training_targets = self.load_data(training_list)
-        if validation_list is not None:
-            self.test_features, self.test_targets = self.load_data(validation_list)
+        self.test_features, self.test_targets = self.load_data(validation_list)
 
     def output_dim(self):
         return self.pdf_size
@@ -159,8 +181,6 @@ class AngleModel(BaseModel):
     def angle_to_bin(self, angles):
         result = []
         angles = np.clip(angles, self.pdf_min, self.pdf_max)
-        # plt.hist(angles, bins=self.pdf_size)
-        # plt.show()
         for angle in angles:
             values = np.linspace(self.pdf_min, self.pdf_max, self.pdf_size)
             values = truncnorm.pdf(values, (self.pdf_min - angle) / self.standard_derivation,

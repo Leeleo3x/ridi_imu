@@ -49,6 +49,8 @@ def main():
     args = parse_args()
     if args.target == 'angle':
         model = models.AngleModel(args.path)
+    elif args.target == 'velocity':
+        model = models.VelocityModel(args.path)
     file_name = open(os.path.join(args.checkpoint, 'checkpoint')).readline().split(':')[1].replace('"', '').strip()
     predicted = predict(args.checkpoint, file_name+'.meta', model)
     result_folder = os.path.join(args.path, 'results')
