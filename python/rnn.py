@@ -274,7 +274,7 @@ if __name__ == '__main__':
     print('Running training')
     training_losses, validation_losses = run_training(model, args.num_epoch, output_path=model_path,
                                                       tensorboard_path=tfboard_path, checkpoint_path=chpt_path,
-                                                      log_path=log_path, reset_each_batch=model.reset_each_batch)
+                                                      log_path=log_path)
 
     if output_root is not None:
         assert len(training_losses) == len(validation_losses)

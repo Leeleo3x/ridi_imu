@@ -21,8 +21,7 @@ TIME_COLUMN = 'time'
 class BaseModel:
     def __init__(self):
         self.softmax = False
-        self.full_sequence = False
-        self.reset_each_batch = False
+        self.full_sequence = True
         self.training_features = None
         self.training_targets = None
         self.test_targets = None
@@ -104,8 +103,7 @@ class VelocityModel(BaseModel):
         self.target_smooth_sigma = target_smooth_sigma
         self.batch_size = batch_size
         self.step = step
-        self.reset_each_batch = True
-        self.full_sequence = True
+        self.full_sequence = False
         self.training_features, self.training_targets = self.load_data(training_list)
         self.test_features, self.test_targets = self.load_data(validation_list)
 
