@@ -8,7 +8,7 @@ args = None
 nano_to_sec = 1e09
 
 
-def get_batch(input_feature, input_target, batch_size, num_steps, stride_ratio=1, full_sequence=True):
+def get_batch(input_feature, input_target, batch_size, num_steps, stride_ratio=1, full_sequence=True, step_size = 1):
     total_num, dim = input_feature.shape
     assert input_target.shape[0] == total_num
 
@@ -29,7 +29,7 @@ def get_batch(input_feature, input_target, batch_size, num_steps, stride_ratio=1
             targ = target_batches[:, i * stride: i * stride + num_steps, :]
             yield (feat, targ)
     else:
-        for i in range(partition_length-stride):
+        for i in range(0, partition_length-stride, step_size):
             feat = feature_batches[:, i:i+stride, :]
             targ = target_batches[:, i:i+stride, :]
             yield (feat, targ)
@@ -90,6 +90,7 @@ def construct_graph(input_dim, output_dim, batch_size=1, softmax=False):
 
 def run_testing(sess, variable_dict, feature, target, init_state):
     input_dim, output_dim = feature.shape[1], target.shape[1]
+
     feature_rnn = feature.reshape([1, -1, input_dim])
     target_rnn = target.reshape([1, -1, output_dim])
     regressed_rnn, loss = sess.run([variable_dict['regressed'], variable_dict['total_loss']],
@@ -161,13 +162,14 @@ def run_training(model, num_epoch, verbose=True, output_path=None, tensorboard_p
             for features, targets in model.training_data():
                 state = np.zeros((args.num_layer, 2, args.batch_size, args.state_size))
                 for _, (X, Y) in enumerate(get_batch(features, targets,
-                                                     args.batch_size, args.num_steps, full_sequence=model.full_sequence)):
+                                                     args.batch_size, args.num_steps, full_sequence=model.full_sequence,
+                                                     step_size=args.num_steps/20)):
                     summaries, current_loss, state, _ = sess.run([all_summary,
                                                                   total_loss,
                                                                   final_state,
                                                                   train_step],
                                                                  feed_dict={x: X, y: Y, init_state: state})
-                    if model.full_sequence:
+                    if not model.full_sequence:
                         state = np.zeros((args.num_layer, 2, args.batch_size, args.state_size))
                     epoch_loss += current_loss
                     if (checkpoint_path is not None) and global_counter % args.checkpoint == 0 and global_counter > 0:
@@ -187,10 +189,19 @@ def run_training(model, num_epoch, verbose=True, output_path=None, tensorboard_p
             target_concat = []
             for valid_feature, valid_target in model.validation_data():
                 state = np.zeros((args.num_layer, 2, 1, args.state_size))
-                predicted, cur_loss = run_testing(sess, variable_dict, valid_feature, valid_target, state)
+                results = []
+                for _, (X, Y) in enumerate(get_batch(valid_feature, valid_target,
+                                                     args.batch_size, args.num_steps, full_sequence=model.full_sequence,
+                                                     step_size=args.num_steps)):
+                    predicted, cur_loss = sess.run([variable_dict['regressed'], variable_dict['total_loss']],
+                                                   feed_dict={variable_dict['x']: X, variable_dict['y']: Y,
+                                                              variable_dict['init_state']: state})
+                    results.append(predicted)
+                    if not model.full_sequence:
+                        state = np.zeros((args.num_layer, 2, args.batch_size, args.state_size))
                 # loss_sklearn = mean_squared_error(np.reshape(np.array(predicted), [-1, 2]), valid_targets[valid_id])
                 # print('Loss for valid set {}: {:.6f}(tf), {:.6f}(sklearn)'.format(valid_id, cur_loss, loss_sklearn))
-                predicted_concat.append(predicted)
+                predicted_concat.append(np.concatenate(results, axis=0))
                 target_concat.append(valid_target)
             predicted_concat = np.concatenate(predicted_concat, axis=0)
             target_concat = np.concatenate(target_concat, axis=0)

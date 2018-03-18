@@ -5,6 +5,7 @@ import models
 import tensorflow as tf
 import numpy as np
 from write_trajectory_to_ply import write_ply_to_file
+import training_data as td
 
 
 def parse_args():
@@ -22,10 +23,10 @@ def load_dataset(path, imu_columns):
 
 
 def predict(checkpoint, meta_graph, model):
-    config = tf.ConfigProto(
-        device_count={'GPU': 0}
-    )
-    with tf.Session(config=config) as sess:
+    # config = tf.ConfigProto(
+    #     device_count={'GPU': 0}
+    # )
+    with tf.Session() as sess:
         saver = tf.train.import_meta_graph(meta_graph)
         saver.restore(sess, tf.train.latest_checkpoint(checkpoint))
         graph = tf.get_default_graph()
@@ -42,7 +43,7 @@ def predict(checkpoint, meta_graph, model):
                 x: features.reshape(1, -1, 9),
                 init_state: state
             })
-            return model.trajectory_from_prediction(result)
+            return model.trajectory_from_prediction(result), model.trajectory_from_prediction(targets)
 
 
 def main():
@@ -52,11 +53,12 @@ def main():
     elif args.target == 'velocity':
         model = models.VelocityModel(args.path)
     file_name = open(os.path.join(args.checkpoint, 'checkpoint')).readline().split(':')[1].replace('"', '').strip()
-    predicted = predict(args.checkpoint, file_name+'.meta', model)
+    predicted, ground_truth = predict(args.checkpoint, file_name+'.meta', model)
     result_folder = os.path.join(args.path, 'results')
     if not os.path.exists(result_folder):
         os.makedirs(result_folder)
     write_ply_to_file(os.path.join(result_folder, 'rnn.ply'), np.array(predicted))
+    write_ply_to_file(os.path.join(result_folder, 'local_speed.ply'), np.array(ground_truth))
 
 
 if __name__ == '__main__':

@@ -3,9 +3,10 @@ import math
 import numpy as np
 import pandas
 import training_data as td
+import utils
+import quaternion
 from scipy.stats import truncnorm
 from scipy.ndimage.filters import gaussian_filter1d
-import matplotlib.pyplot as plt
 
 NANO_TO_SEC = 1e09
 VP_ANGLE_DISTRIBUTIONS_SIGMA = np.deg2rad(5.0)
@@ -15,6 +16,7 @@ IMU_COLUMNS = ['gyro_x', 'gyro_y', 'gyro_z',
 POSITION_COLUMNS = ['pos_x', 'pos_y', 'pos_z']
 ORIENTATION_COLUMNS = ['ori_w', 'ori_x', 'ori_y', 'ori_z']
 GRAVITY_COLUMNS = ['grav_x', 'grav_y', 'grav_z']
+MAGNET_COLUMNS = ['magnet_x', 'magnet_y', 'magnet_z']
 TIME_COLUMN = 'time'
 
 
@@ -97,13 +99,15 @@ class BaseModel:
 
 class VelocityModel(BaseModel):
     def __init__(self, training_list, validation_list=None, feature_smooth_sigma=0, target_smooth_sigma=0,
-                 batch_size=1, step = 10):
+                 batch_size=1, step=10):
         super().__init__()
         self.feature_smooth_sigma = feature_smooth_sigma
         self.target_smooth_sigma = target_smooth_sigma
         self.batch_size = batch_size
         self.step = step
         self.full_sequence = False
+        self.orientation = None
+        self.rot = None
         self.training_features, self.training_targets = self.load_data(training_list)
         self.test_features, self.test_targets = self.load_data(validation_list)
 
@@ -117,14 +121,23 @@ class VelocityModel(BaseModel):
     def _process_target(self, data_all):
         ts = data_all[TIME_COLUMN].values / NANO_TO_SEC
         position = data_all[POSITION_COLUMNS].values
-        orientation = data_all[ORIENTATION_COLUMNS].values
+        self.orientation = data_all[ORIENTATION_COLUMNS].values
         gravity = data_all[GRAVITY_COLUMNS].values
-        return td.compute_local_speed_with_gravity(ts, position, orientation, gravity), None
+        magnet = data_all[MAGNET_COLUMNS].values
 
-    @staticmethod
-    def trajectory_from_prediction(prediction):
+        # rot_grav = utils.quaternion_from_two_vectors(magnet[0], np.array([0, 0, 1]))
+        # magnet_grav = np.matmul(quaternion.as_rotation_matrix(rot_grav), gravity[0])
+        # magnet_grav[2] = 0
+        # self.rot = utils.quaternion_from_two_vectors(magnet_grav, np.array([0, 1, 0]))
+
+        return td.compute_local_speed_with_gravity(ts, position, self.orientation, gravity), None
+
+    def trajectory_from_prediction(self, prediction):
         trajectory = [np.array([0, 0, 0])]
-        for v in prediction:
+        for i in range(prediction.shape[0]):
+            q = quaternion.quaternion(*self.orientation[i])
+            v = np.matmul(quaternion.as_rotation_matrix(q), prediction[i])
+            v[2] = 0
             trajectory.append(trajectory[-1] + v)
         return trajectory
 
