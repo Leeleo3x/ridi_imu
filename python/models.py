@@ -99,13 +99,13 @@ class BaseModel:
 
 class VelocityModel(BaseModel):
     def __init__(self, training_list, validation_list=None, feature_smooth_sigma=0, target_smooth_sigma=0,
-                 batch_size=1, step=10):
+                 batch_size=1, step=10, full_sequence=False):
         super().__init__()
         self.feature_smooth_sigma = feature_smooth_sigma
         self.target_smooth_sigma = target_smooth_sigma
         self.batch_size = batch_size
         self.step = step
-        self.full_sequence = False
+        self.full_sequence = full_sequence
         self.orientation = None
         self.rot = None
         self.training_features, self.training_targets = self.load_data(training_list)

@@ -22,8 +22,13 @@ def get_batch(input_feature, input_target, batch_size, num_steps, stride_ratio=1
     stride = num_steps // stride_ratio
     if full_sequence:
         epoch_size = partition_length // stride
-        for i in range(epoch_size):
+        for i in range(epoch_size+1):
             if i * stride + num_steps >= feature_batches.shape[1]:
+                feat = feature_batches[:, i * stride: feature_batches.shape[1], :]
+                targ = target_batches[:, i * stride: feature_batches.shape[1], :]
+                print(feat.shape)
+                print(targ.shape)
+                yield (feat, targ)
                 break
             feat = feature_batches[:, i * stride: i * stride + num_steps, :]
             targ = target_batches[:, i * stride: i * stride + num_steps, :]
@@ -168,7 +173,7 @@ def run_training(model, num_epoch, verbose=True, output_path=None, tensorboard_p
                 state = np.zeros((args.num_layer, 2, args.batch_size, args.state_size))
                 for _, (X, Y) in enumerate(get_batch(features, targets,
                                                      args.batch_size, args.num_steps, full_sequence=model.full_sequence,
-                                                     step_size=args.num_steps//2)):
+                                                     step_size=args.step_size)):
                     summaries, current_loss, state, _ = sess.run([all_summary,
                                                                   total_loss,
                                                                   final_state,
@@ -196,11 +201,12 @@ def run_training(model, num_epoch, verbose=True, output_path=None, tensorboard_p
                 state = np.zeros((args.num_layer, 2, 1, args.state_size))
                 results = []
                 for _, (X, Y) in enumerate(get_batch(valid_feature, valid_target,
-                                                     args.batch_size, args.num_steps, full_sequence=model.full_sequence,
-                                                     step_size=args.num_steps)):
-                    predicted, cur_loss = sess.run([variable_dict['regressed'], variable_dict['total_loss']],
-                                                   feed_dict={variable_dict['x']: X, variable_dict['y']: Y,
-                                                              variable_dict['init_state']: state})
+                                                     args.batch_size, args.num_steps, full_sequence=True)):
+                    predicted, cur_loss, state = sess.run([variable_dict['regressed'],
+                                                           variable_dict['total_loss'],
+                                                           variable_dict['final_state']],
+                                                          feed_dict={variable_dict['x']: X, variable_dict['y']: Y,
+                                                                     variable_dict['init_state']: state})
                     results.append(predicted)
                     if not model.full_sequence:
                         state = np.zeros((args.num_layer, 2, args.batch_size, args.state_size))
@@ -248,6 +254,7 @@ if __name__ == '__main__':
     parser.add_argument('--target_smooth_sigma', type=float, default=30.0)
     parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--num_steps', type=int, default=400)
+    parser.add_argument('--step_size', type=int, default=20)
     parser.add_argument('--state_size', type=int, default=1500)
     parser.add_argument('--num_layer', type=int, default=1)
     parser.add_argument('--num_epoch', type=int, default=200)
@@ -257,6 +264,7 @@ if __name__ == '__main__':
     parser.add_argument('--output', type=str, default=None)
     parser.add_argument('--checkpoint', type=int, default=5000)
     parser.add_argument('--use_pdf', action='store_true', default=False)
+    parser.add_argument('--full_sequence', action='store_true', default=False)
     args = parser.parse_args()
 
     # configure output path
@@ -281,7 +289,8 @@ if __name__ == '__main__':
     if args.target == 'angle':
         model = models.AngleModel(args.list, args.validation)
     elif args.target == 'velocity':
-        model = models.VelocityModel(args.list, args.validation, args.feature_smooth_sigma, args.target_smooth_sigma)
+        model = models.VelocityModel(args.list, args.validation, args.feature_smooth_sigma, args.target_smooth_sigma,
+                                     full_sequence=args.full_sequence)
     elif args.target == 'position':
         model = models.PositionModel(args.list, args.validation)
     else:
