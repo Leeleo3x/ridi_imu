@@ -168,7 +168,7 @@ def run_training(model, num_epoch, verbose=True, output_path=None, tensorboard_p
                 state = np.zeros((args.num_layer, 2, args.batch_size, args.state_size))
                 for _, (X, Y) in enumerate(get_batch(features, targets,
                                                      args.batch_size, args.num_steps, full_sequence=model.full_sequence,
-                                                     step_size=args.num_steps//8)):
+                                                     step_size=args.num_steps//2)):
                     summaries, current_loss, state, _ = sess.run([all_summary,
                                                                   total_loss,
                                                                   final_state,

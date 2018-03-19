@@ -6,6 +6,7 @@ import tensorflow as tf
 import numpy as np
 from write_trajectory_to_ply import write_ply_to_file
 import training_data as td
+import rnn
 
 
 def parse_args():
@@ -36,14 +37,17 @@ def predict(checkpoint, meta_graph, model):
         final_state = graph.get_tensor_by_name('final_state:0')
         predicted = [np.array([0, 0, 0])]
         state = np.zeros((1, 2, 1, 1500))
-        trajectory = []
         for features, targets in model.training_data():
-            # X = np.concatenate([feature_vectors[i], predicted[-1]]).reshape([1, -1, 12])
-            result, state = sess.run([regressed, final_state], feed_dict={
-                x: features.reshape(1, -1, 9),
-                init_state: state
-            })
-            return model.trajectory_from_prediction(result), model.trajectory_from_prediction(targets)
+            results = []
+            for _, (X, Y) in enumerate(rnn.get_batch(features, targets,
+                                                     1, 400, full_sequence=model.full_sequence)):
+                result, _ = sess.run([regressed, final_state], feed_dict={
+                    x: X,
+                    init_state: state
+                })
+                results.append(predicted)
+            results = np.concatenate(results, axis=0)
+            return model.trajectory_from_prediction(results), model.trajectory_from_prediction(targets)
 
 
 def main():
